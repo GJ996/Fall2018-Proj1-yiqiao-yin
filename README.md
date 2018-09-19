@@ -14,6 +14,8 @@ Term: Fall 2018
 
 + Project summary: This project presents reader a blog with an interesting motivation: happiness can be a data science story. The blog explores HappyDB data set and attempts to understand what consists of happiness. The project presents empirical evidence and seeks explanation in the area of (1) word frequency, (2) gender difference, (3) marrital difference, (4) parenthood, and (5) national difference.
 
+Please go to [doc](https://github.com/TZstatsADS/Fall2018-Proj1-yiqiao-yin/tree/master/doc) folder to see RMD file. One should download RMD and knit the html document to see the final results.
+
 Following [suggestions](http://nicercode.github.io/blog/2013-04-05-projects/) by [RICH FITZJOHN](http://nicercode.github.io/about/#Team) (@richfitz). This folder is orgarnized as follows.
 
 ```
