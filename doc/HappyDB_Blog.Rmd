@@ -1,0 +1,330 @@
+---
+title: "Happiness Can Be A Data Science Story"
+author: "Yiqiao Yin"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Like holding hands with the person you love, happiness is a simple unforgetable moment in our lives. But is everyone experiencing happiness the same or drastically different?
+
+With the technology that can help us understand how people describe their happiness, we present the following analysis to visualize and understand the science behind happiness by using deeper NLP methdologies in positive psychology. I want to specially thank Arpita Shah and Tian Zheng for providing coding resources for this R notebook.
+
+```{r pressure, echo=FALSE, fig.cap="Happiness is when what you think, what you say, and what you do are in harmony. ---Gandhi", out.width = '100%'}
+knitr::include_graphics("../figs/happy.jpg")
+```
+
+# INTRODUCTION 
+
+This project happily unites science and art. The study of happiness is an area of positive psychology that studies the factors that sustain people's happiness in their lives. What are some factors we can associate ourselves with when we are study the science about happiness? Is it money? Is it marital status? Or is it material belongings?
+
+## Background
+
+Asai et al (2018) proposed a data set and outlines a few NLP problems that can be studied with. HappyDB is a corpus of 100,000 crowd-sourced happy moments via Amazon's Mechanical Turk. Please refer to Asai et al (2018) which can be accessed on https://arxiv.org/abs/1801.07746. We explore this data set and try to answer the question, "What makes people happy?" 
+
+# EXPLORATORY ANALYSIS
+
+This section we dive into the analysis and technical part of the project.
+
+```{r load libraries, warning=FALSE, message=FALSE, echo=FALSE, error=FALSE}
+#Let us introduce all the packages used in this notebook. 
+
+#+ `tidyverse` is an opinionated collection of R packages designed for data science. All packages share an underlying design philosophy, grammar, and data structures;
+#+ `tidytext` allows text mining using 'dplyr', 'ggplot2', and other tidy tools;
+#+ `DT` provides an R interface to the JavaScript library DataTables;
+#+ `scales` map data to aesthetics, and provide methods for automatically determining breaks and labels for axes and legends;
+#+ `wordcloud2` provides an HTML5 interface to wordcloud for data visualization;
+#+ `gridExtra` contains miscellaneous functions for "grid" graphics;
+#+ `ngram` is for constructing n-grams (“tokenizing”), as well as generating new text based on the n-gram structure of a given text input (“babbling”);
+#+ `Shiny` is an R package that makes it easy to build interactive web apps straight from R;
+
+# Packages
+#install.packages(c("tidyverse", "tidytext", "DT", "scales", "wordcloud2","gridExtra", "ngram", "shiny"))
+library(tidyverse)
+library(tidytext)
+library(DT)
+library(scales)
+library(wordcloud2)
+library(gridExtra)
+library(ngram)
+library(shiny) 
+library(shiny)
+library(plotly)
+library(vioplot)
+```
+
+```{r load data, warning=FALSE, message=FALSE, echo=FALSE}
+# Load the processed text data along with demographic information on contributors
+hm_data <- read_csv("../output/processed_moments.csv")
+
+urlfile<-'https://raw.githubusercontent.com/rit-public/HappyDB/master/happydb/data/demographic.csv'
+demo_data <- read_csv(urlfile)
+```
+
+```{r combining data, warning=FALSE, message=FALSE, echo=FALSE}
+# Combine both the data sets and keep the required columns for analysis
+hm_data <- hm_data %>%
+  inner_join(demo_data, by = "wid") %>%
+  select(wid,
+         original_hm,
+         gender, 
+         marital, 
+         parenthood,
+         reflection_period,
+         age, 
+         country, 
+         ground_truth_category, 
+         text) %>%
+  mutate(count = sapply(hm_data$text, wordcount)) %>%
+  filter(gender %in% c("m", "f")) %>%
+  filter(marital %in% c("single", "married")) %>%
+  filter(parenthood %in% c("n", "y")) %>%
+  filter(reflection_period %in% c("24h", "3m")) %>%
+  mutate(reflection_period = fct_recode(reflection_period, 
+                                        months_3 = "3m", hours_24 = "24h"))
+```
+
+Let us take a quick preview of what the data set looks like.
+
+```{r, echo=FALSE}
+datatable(
+  hm_data,
+  options = list(pageLength = 5))
+```
+
+```{r bag of words, warning=FALSE, message=FALSE, echo=FALSE}
+# Create a bag of words using the text data
+bag_of_words <-  hm_data %>%
+  unnest_tokens(word, text)
+
+word_count <- bag_of_words %>%
+  count(word, sort = TRUE)
+```
+
+```{r bigram, warning=FALSE, message=FALSE, echo=FALSE}
+# Create bigrams using the text data
+hm_bigrams <- hm_data %>%
+  filter(count != 1) %>%
+  unnest_tokens(bigram, text, token = "ngrams", n = 2)
+
+bigram_counts <- hm_bigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ") %>%
+  count(word1, word2, sort = TRUE)
+```
+
+# WHAT CONSISTS OF HAPPINESS
+
+When we are happy, what sort of memory do we associate ourselves with? Are we feeling happy when we eat delicious food? Or are we feeling happy when we are with friends and family? To start to answer this kind of question, we dive into the data set by the text input of HappyDB data. 
+
+A global view is to see what are some high frequency words in the data set when people are asked to recall their past moments of happiness. We can do a word cloud on all the text inputs choosing top 50 words. 
+
+```{r, message=FALSE, error=FALSE, warning=FALSE, echo=FALSE}
+# Word Count with Top 50 Words
+word_count %>%
+  slice(1:50) %>%
+  wordcloud2(size = 0.6,
+             rotateRatio = 0)
+```
+
+## What Words Do We Say
+
+The top qords can further be notated and analyzed by taking a look at the exact frequency. We have top words to be ``friend''. There is an old saying misfortune tests the sinceretry of friends. Well, so does statistics, right?
+
+```{r, message=FALSE, error=FALSE, warning=FALSE, echo=FALSE}
+# Word Frequency with Top 20 Words
+word_count %>%
+  slice(1:20) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  ylab("Word Frequency")+
+  coord_flip()
+```
+
+## Is Happiness Different Between Genders
+
+In kindergarten, people generally associate boys with guns and girls with barbies. Do gender truly reveal a difference when people associate themselves with happy memories. We can compose a scatter plot of the frequency of words each gender associate themselves with when asked to bring up a happy memory. In this case, the scatter has "female" on the x-axis and "male" on the y-axis. We can see that a typical piece of information is "basketball" which happen to have a larger frequency for "male" and "female". A notable example is "makeup" for "female" but not so much for "male". 
+
+```{r, message=FALSE, error=FALSE, warning=FALSE, echo=FALSE}
+# Scatter Plot According to "gender"
+enter <- "gender"
+selectedAttribute <- function(enter) {
+  return(list(
+    atr = enter
+  ))
+}
+temp <- bag_of_words %>%
+  count(!!as.name(selectedAttribute(enter)$atr), word) %>%
+  group_by(!!as.name(selectedAttribute(enter)$atr)) %>%
+  mutate(proportion = n / sum(n)) %>% 
+  select(-n) %>% 
+  spread(!!as.name(selectedAttribute(enter)$atr), proportion)
+
+ggplot(temp, 
+       aes_string(x = colnames(temp)[2], y = colnames(temp)[3]),
+       color = abs(colnames(temp)[3] - colnames(temp)[2])) +
+  geom_abline(color = "gray40", lty = 2) +
+  geom_jitter(alpha = 0.1, size = 1, width = 0.3, height = 0.3) +
+  geom_text(aes(label = word), check_overlap = TRUE, vjust = 1.5) +
+  scale_x_log10(labels = percent_format()) +
+  scale_y_log10(labels = percent_format()) +
+  scale_color_gradient(limits = c(0, 0.001), low = "darkslategray4", high = "gray75") +
+  theme(legend.position="none")
+```
+
+## Married or Single
+
+Is marriage an important factor to differentiate memories of happiness? We can do a scatter plot of frequency of words according to "married" and "single". In the following plot, we have "married" on the x-axis and "single" on the y-axis. Intuitively, "child" happen to be a word that associate with "married" people when they find themselves in happiness. 
+
+```{r, message=FALSE, error=FALSE, warning=FALSE, echo=FALSE}
+# Scatter Plot According to "marital"
+enter <- "marital"
+selectedAttribute <- function(enter) {
+  return(list(
+    atr = enter
+  ))
+}
+temp <- bag_of_words %>%
+  count(!!as.name(selectedAttribute(enter)$atr), word) %>%
+  group_by(!!as.name(selectedAttribute(enter)$atr)) %>%
+  mutate(proportion = n / sum(n)) %>% 
+  select(-n) %>% 
+  spread(!!as.name(selectedAttribute(enter)$atr), proportion)
+
+ggplot(temp, 
+       aes_string(x = colnames(temp)[2], y = colnames(temp)[3]),
+       color = abs(colnames(temp)[3] - colnames(temp)[2])) +
+  geom_abline(color = "gray40", lty = 2) +
+  geom_jitter(alpha = 0.1, size = 1, width = 0.3, height = 0.3) +
+  geom_text(aes(label = word), check_overlap = TRUE, vjust = 1.5) +
+  scale_x_log10(labels = percent_format()) +
+  scale_y_log10(labels = percent_format()) +
+  scale_color_gradient(limits = c(0, 0.001), low = "darkslategray4", high = "gray75") +
+  theme(legend.position="none")
+```
+
+## Does Culture Have Nationality
+
+Will happiness change in different country? We can think about this kind of question using United States as an example. We can create an indicating variable telling us whether a country is United States or not. We can then do a boxplot on age. For United States, people who expressed happy moments in the text have a wider age distribution than that of the rest of the world. We can also take a look at the violin plot with a kernel smoothing technique to see a better view of the distribution.
+
+```{r, message=FALSE, error=FALSE, warning=FALSE, echo=FALSE}
+# Define a binary variable indicating whether a country is USA or not
+hm_data$usa.or.not <- ifelse(hm_data$country == "USA", 1, 0)
+Age = as.numeric(hm_data$age)
+USA = hm_data$usa.or.not
+new.data <- data.frame(cbind(
+  Age, USA
+))
+new.data.1 <- new.data[new.data$USA == 1, 1]
+new.data.0 <- new.data[new.data$USA == 0, 1]
+data.usa.age <- data.frame(cbind(
+  new.data.1[1:100], 
+  new.data.0[1:100]
+))
+
+# Interactive Box Plot
+# Create a shareable link to your chart
+# A basic boxplot
+boxplot(data.usa.age, main = "BoxPlot of Age for People in USA vs. People not in USA")
+
+# Viola Plot
+vioplot(data.usa.age$X1, data.usa.age$X2, names=c("From USA", "Not From USA"), 
+   col="gold")
+```
+
+To further this direction of analysis, we can take a look at the word cloud for people who expressed happiness in USA and that of not in USA. We plot USA first and rest of the world next. Both graphs are presented below. We can see top 3 words USA has similar results as the rest of the world. For example, "time", "friend", "day" it is similar around the world. Then we have differences such as in USA some of the top frequency words are "find", "time", "played" are not in the rest of the world. 
+
+```{r, message=FALSE, error=FALSE, warning=FALSE, echo=FALSE}
+# Let us find the high frequency words
+# from one country. Consider USA as an 
+# example
+bag_of_words_usa <-  hm_data[hm_data$usa.or.not == 1, ] %>%
+  unnest_tokens(word, text)
+word_count_usa <- bag_of_words_usa %>%
+  count(word, sort = TRUE)
+bag_of_words_not_usa <-  hm_data[hm_data$usa.or.not == 0, ] %>%
+  unnest_tokens(word, text)
+word_count_not_usa <- bag_of_words_not_usa %>%
+  count(word, sort = TRUE)
+
+# Now we can try to make the table
+usa <- word_count_usa[1:50, ]
+colnames(usa) <- c("Words.for.United.States", "Count")
+not_usa <- word_count_not_usa[1:50, ]
+colnames(not_usa) <- c("Words.for.Rest.of.World", "Count")
+usa_or_not <- data.frame(cbind(usa, not_usa))
+datatable(
+  usa_or_not,
+  options = list(pageLength = 5))
+```
+
+Let us peel more skins off the onions. That is, let us introduce another variable, say gender, on nationality and see what the results are. The purpose to do this is to create a two-way interaction. Considering nationality and gender with each variable to be binary form. We have partitions: (USA, Male), (USA, Female), (Not USA, Male), (Not USA, Female), total four of them. Thus, we can have four distinct high-frequency word counts for them. 
+
+```{r, message=FALSE, error=FALSE, warning=FALSE, echo=FALSE}
+# Let us find the high frequency words
+# from one country. Consider USA as an 
+# example
+hm_data$male.or.not <- ifelse(hm_data$gender == "m", 1, 0)
+
+# USA + Male
+bag_of_words_usa_male <-  hm_data[(hm_data$usa.or.not == 1) & (hm_data$male.or.not == 1), ] %>%
+  unnest_tokens(word, text)
+word_count_usa_male <- bag_of_words_usa_male %>%
+  count(word, sort = TRUE)
+
+# USA + Female
+bag_of_words_usa_female <-  hm_data[(hm_data$usa.or.not == 1) & (hm_data$male.or.not == 0), ] %>%
+  unnest_tokens(word, text)
+word_count_usa_female <- bag_of_words_usa_female %>%
+  count(word, sort = TRUE)
+
+# Not USA + Male
+bag_of_words_not_usa_male <-  hm_data[(hm_data$usa.or.not == 0) & (hm_data$male.or.not == 1), ] %>%
+  unnest_tokens(word, text)
+word_count_not_usa_male <- bag_of_words_not_usa_male %>%
+  count(word, sort = TRUE)
+
+# Not USA + Female
+bag_of_words_not_usa_female <-  hm_data[(hm_data$usa.or.not == 0) & (hm_data$male.or.not == 0), ] %>%
+  unnest_tokens(word, text)
+word_count_not_usa_female <- bag_of_words_not_usa_female %>%
+  count(word, sort = TRUE)
+
+# Now we can try to make the table
+usa_male <- word_count_usa_male[1:100, ]
+colnames(usa_male) <- c("Words.for.United.States.Male", "Count.U.M")
+usa_female <- word_count_usa_female[1:100, ]
+colnames(usa_female) <- c("Words.for.United.States.Female", "Count.U.F")
+not_usa_male <- word_count_not_usa_male[1:100, ]
+colnames(not_usa_male) <- c("Words.for.Rest.of.World.Male", "Count.R.M")
+not_usa_female <- word_count_not_usa_female[1:100, ]
+colnames(not_usa_female) <- c("Words.for.Rest.of.World.Female", "Count.R.F")
+usa_gender <- data.frame(cbind(
+  usa_male, usa_female,
+  not_usa_male, not_usa_female
+))
+datatable(
+  usa_gender,
+  options = list(pageLength = 5))
+```
+
+# SUMMARY
+
+The blog shares with readers a few exploratory results on HappyDB data set and attempts to understand the question ``what makes people happy''. We make the following conclusions:
+
+1. There are certain words people associate themselves with when they are experiencing happiness. These words are fairly intuitive such as "friend", "day", "family", and so on. 
+
+2. We do observe there is a difference between gender when experiencing happiness. 
+
+3. We also observe a difference between married and single people. 
+
+4. We use USA as an example to see if there is a difference between USA and the rest of the world. We observe a wider age distribution in USA than that of the rest of the world. For high frequency words in the top three positions, they appear to be similar. Words start to differ among top 20 high frequency words between USA and the rest of the world. 
+
+5. Lastly, we introduce a two-way intersection using nationality (USA or not) and gender (male or female) to represent the difference of high frequency words. 
+
+# REFERENCE
+
+Asai et al (2018), "HappyDB: A Corpus of 100,000 Crowdsourced Happy Moments", https://arxiv.org/abs/1801.07746. 
